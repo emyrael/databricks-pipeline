@@ -13,10 +13,21 @@
 -- MAGIC dbutils.widgets.text("gold_schema", "rewards_gold")
 -- MAGIC dbutils.widgets.text("process_date", "2026-05-27")
 -- MAGIC dbutils.widgets.text("full_refresh", "false")
+-- MAGIC dbutils.widgets.text(
+-- MAGIC     "repo_src",
+-- MAGIC     "/Workspace/Users/emyraeleson@gmail.com/databricks-pipeline_flow/src",
+-- MAGIC )
 
 -- COMMAND ----------
 
 -- MAGIC %python
+-- MAGIC import sys
+-- MAGIC from pathlib import Path
+-- MAGIC
+-- MAGIC _repo_src = Path(dbutils.widgets.get("repo_src"))
+-- MAGIC if (_repo_src / "databricks_pipeline").exists() and str(_repo_src) not in sys.path:
+-- MAGIC     sys.path.insert(0, str(_repo_src))
+-- MAGIC
 -- MAGIC from databricks_pipeline.config import PipelineConfig
 -- MAGIC from databricks_pipeline.pipeline import run_gold
 -- MAGIC from databricks_pipeline.utils import ensure_schemas, parse_process_date

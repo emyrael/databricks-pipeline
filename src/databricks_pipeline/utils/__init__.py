@@ -6,6 +6,7 @@ Import submodules directly when you need a specific helper, e.g.::
     from databricks_pipeline.utils.dates import correction_window
 """
 
+from databricks_pipeline.utils.bootstrap import ensure_package_on_path
 from databricks_pipeline.utils.dates import correction_window, parse_process_date
 from databricks_pipeline.utils.io import read_csv_with_schema, write_delta_overwrite
 from databricks_pipeline.utils.paths import resolve_source_csv
@@ -22,6 +23,7 @@ def __getattr__(name: str):
 
 __all__ = [
     "correction_window",
+    "ensure_package_on_path",
     "ensure_schemas",
     "parse_process_date",
     "read_csv_with_schema",

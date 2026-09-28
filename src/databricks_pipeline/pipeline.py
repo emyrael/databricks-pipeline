@@ -178,6 +178,12 @@ def run_silver(
             config.silver_user_profile,
             key_columns=["user_id"],
             update_matched=True,
+            matched_condition=(
+                "NOT (s.events_lifetime <=> t.events_lifetime "
+                "AND s.last_seen_ts <=> t.last_seen_ts "
+                "AND s.revenue_30d_eur <=> t.revenue_30d_eur "
+                "AND s.is_payer <=> t.is_payer)"
+            ),
         )
 
     return {

@@ -8,7 +8,7 @@ Architecture:
           ↓
     Bronze Delta        PySpark, raw source values
           ↓
-    Silver Delta        PySpark, typing + safe normalization + dedupe + quality flags
+    Silver Delta        PySpark, incremental MERGE + normalization + dedupe + quality flags
           ↓
     Gold daily metrics  SQL, business-readable aggregates
           ↓
@@ -51,6 +51,6 @@ Run the notebooks in order:
 
     01_bronze → 02_silver → 03_gold → 04_verify
 
-For the initial complete build, run Gold with full_refresh=true. Normal runs use a seven-day correction window.
+For the initial complete build, run Silver and Gold with full_refresh=true. Normal Silver runs MERGE only the current Bronze batch into accumulated Silver tables; Gold replaces its seven-day correction window.
 
 See SOLUTION.md for the data-quality decisions, late-arrival strategy, failure modes, and interview talking points.

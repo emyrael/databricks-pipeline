@@ -42,6 +42,34 @@ def assert_unique_key(df: DataFrame, key: str, label: str) -> None:
         raise ValueError(f"{label}: {key} is not unique")
 
 
+def assert_no_key_conflicts(
+    incoming: DataFrame,
+    existing: DataFrame,
+    *,
+    key: str,
+    compare_columns: list[str],
+    label: str,
+) -> None:
+    """Fail if an incoming existing key changes immutable business fields."""
+    if not compare_columns:
+        return
+
+    joined = incoming.alias("s").join(
+        existing.alias("t"),
+        F.col(f"s.{key}").eqNullSafe(F.col(f"t.{key}")),
+        "inner",
+    )
+
+    conflict = None
+    for column in compare_columns:
+        differs = ~F.col(f"s.{column}").eqNullSafe(F.col(f"t.{column}"))
+        conflict = differs if conflict is None else (conflict | differs)
+
+    if conflict is not None and joined.filter(conflict).limit(1).count():
+        raise ValueError(
+            f"{label}: incoming {key} conflicts with an existing business row"
+        )
+
 def assert_event_replay_shape(events: DataFrame) -> None:
     """Ensure repeated event_ids differ only by ingest_ts.
 

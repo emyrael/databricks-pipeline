@@ -4,15 +4,16 @@
 # environment_version = "6"
 # ///
 # MAGIC %md
-# MAGIC # 02 — Silver transforms
-# MAGIC Transform the current Bronze batch and merge it into Silver Delta tables.
-# MAGIC Use full_refresh=true for the first load; normal runs are incremental.
+# MAGIC # 03 — Gold daily metrics
+# MAGIC Python runtime driver for the Gold step.
+# MAGIC The business metric definition itself lives in `gold/sql/daily_metrics.sql`.
 
 # COMMAND ----------
 
 dbutils.widgets.text("catalog", "workspace")
-dbutils.widgets.text("bronze_schema", "rewards_bronze")
 dbutils.widgets.text("silver_schema", "rewards_silver")
+dbutils.widgets.text("gold_schema", "rewards_gold")
+dbutils.widgets.text("process_date", "2026-05-27")
 dbutils.widgets.text("full_refresh", "false")
 dbutils.widgets.text(
     "repo_src",
@@ -29,17 +30,20 @@ if (_repo_src / "databricks_pipeline").exists() and str(_repo_src) not in sys.pa
     sys.path.insert(0, str(_repo_src))
 
 from databricks_pipeline.config import PipelineConfig
-from databricks_pipeline.pipeline import run_silver
-from databricks_pipeline.utils import ensure_schemas
+from databricks_pipeline.pipeline import run_gold
+from databricks_pipeline.utils import ensure_schemas, parse_process_date
 
 config = PipelineConfig(
     catalog=dbutils.widgets.get("catalog"),
-    bronze_schema=dbutils.widgets.get("bronze_schema"),
     silver_schema=dbutils.widgets.get("silver_schema"),
+    gold_schema=dbutils.widgets.get("gold_schema"),
 )
+process_date = parse_process_date(dbutils.widgets.get("process_date"))
 full_refresh = dbutils.widgets.get("full_refresh").lower() in {"1", "true", "yes"}
 
 ensure_schemas(spark, config)
-counts = run_silver(spark, config, full_refresh=full_refresh)
-print(f"Silver mode: {'full refresh' if full_refresh else 'incremental merge'}")
-display(counts)
+gold_scope = run_gold(spark, config, process_date, full_refresh=full_refresh)
+
+print(f"Gold mode: {'full refresh' if full_refresh else 'correction-window replace'}")
+print(f"Gold rows in scope: {gold_scope.count()}")
+display(gold_scope.orderBy("metric_date", "country", "platform").limit(50))

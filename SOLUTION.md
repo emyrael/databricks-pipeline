@@ -32,14 +32,14 @@ Bronze preserves what arrived. Silver performs evidence-backed typing, normaliza
 
 with installs, unique users per event type, reward payouts and reward cost EUR.
 
-Gold is SQL on purpose: the metric definitions are aggregation-heavy and easier to review directly than equivalent nested DataFrame expressions.
+Gold business logic is SQL on purpose: the metric definitions are aggregation-heavy and easier to review directly than equivalent nested DataFrame expressions. The Databricks Gold notebook itself is a thin Python driver that reads runtime parameters and calls `run_gold()`, while the canonical metric definition lives in `gold/sql/daily_metrics.sql`.
 
 ## How to run
 
 1. Put the four source CSVs in the configured Unity Catalog Volume landing path.
 2. Run `notebooks/01_bronze.py`.
 3. Run `notebooks/02_silver.py`.
-4. Run `notebooks/03_gold.sql`.
+4. Run `notebooks/03_gold.py`.
 5. Run `notebooks/04_verify.py`.
 
 For the initial build:
@@ -56,7 +56,7 @@ Silver full_refresh = false
 Gold   full_refresh = false
 ```
 
-The notebooks are intentionally thin runtime entry points. `dbutils.widgets` provide catalog/schema paths, load date, process date and refresh mode without hard-coding environment-specific values into transformation code. The reusable logic remains in `src/databricks_pipeline` so it can be tested locally.
+The notebooks are intentionally thin runtime entry points. `dbutils.widgets` provide catalog/schema paths, load date, process date and refresh mode without hard-coding environment-specific values into transformation code. The reusable logic remains in `src/databricks_pipeline` so it can be tested locally. In particular, `notebooks/03_gold.py` is a Python driver for runtime/orchestration concerns, while `gold/sql/daily_metrics.sql` is the canonical SQL business definition.
 
 ## Layer boundaries
 
@@ -81,7 +81,12 @@ This means a single-day load does not require a full Silver rebuild.
 
 ### Gold
 
-Gold is fully derived SQL. Installs and events are aggregated separately before a full outer join so one install cannot be multiplied by a user's many event rows.
+Gold is deliberately split into two concerns:
+
+- `notebooks/03_gold.py` — Python runtime driver for widgets, configuration, refresh mode and orchestration;
+- `gold/sql/daily_metrics.sql` — canonical SQL business metric definition.
+
+The Gold table is fully derived. Installs and events are aggregated separately in SQL before a full outer join so one install cannot be multiplied by a user's many event rows.
 
 ## Data-quality findings and decisions
 
@@ -186,7 +191,7 @@ It stops being the right choice when files arrive continuously or from many sour
 
 PySpark is used for Silver because the work is windowing, type conversion, enrichment and reusable data-quality logic.
 
-SQL is used for Gold because the business metrics are grouping, conditional distinct counts and sums, and are easier to audit in SQL.
+SQL is used for the Gold business logic because the metrics are grouping, conditional distinct counts and sums, and are easier to audit in SQL. Python remains the notebook language because `dbutils.widgets`, parsing `process_date`, selecting `full_refresh`, loading configuration and invoking `run_gold()` are runtime/orchestration concerns rather than metric-definition concerns.
 
 ### Jobs/Workflows vs DLT/Lakeflow Declarative Pipelines
 

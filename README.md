@@ -1,50 +1,56 @@
-# Rewards Databricks Pipeline
+# Databricks Rewards Pipeline
 
-Idempotent medallion pipeline for the rewarded-offer take-home.
+Interview-focused Databricks pipeline for a rewarded-offer dataset.
 
-## Layout
+Architecture:
 
-```text
-pipeline/
-├── data/                          # local CSVs for offline tests only
-├── gold/
-│   └── sql/
-│       └── daily_metrics.sql      # Gold business metrics (SQL)
-├── notebooks/
-│   ├── 01_bronze.py
-│   ├── 02_silver.py
-│   ├── 03_gold.sql
-│   └── 04_verify.py
-├── src/databricks_pipeline/
-│   ├── bronze/                    # batch CSV → Bronze Delta
-│   ├── silver/                    # PySpark transforms
-│   ├── gold/                      # SQL loader helpers
-│   ├── utils/                     # shared I/O, dates, paths, templates
-│   ├── quality/                   # reusable checks
-│   ├── config.py
-│   └── pipeline.py                # Bronze → Silver → Gold orchestration
-├── tests/
-├── pyproject.toml
-├── REPORT.md
-└── databricks_pipeline_specification.md
-```
+    CSV landing files
+          ↓
+    Bronze Delta        PySpark, raw source values
+          ↓
+    Silver Delta        PySpark, typing + safe normalization + dedupe + quality flags
+          ↓
+    Gold daily metrics  SQL, business-readable aggregates
+          ↓
+    Verification        PySpark quality checks + reconciliation
 
-## Unity Catalog (this workspace)
+The repo deliberately avoids streaming, Auto Loader, DLT/Lakeflow Declarative Pipelines, and physical partitioning for a dataset this small. The interesting problems here are correctness: replayed events, late arrival, ambiguous records, join fan-out, and idempotent reruns.
 
-| Layer | Tables |
-|---|---|
-| Landing CSVs | `/Volumes/workspace/rewards/landing/<source>/load_date=...` |
-| Bronze | `workspace.rewards_bronze.*` |
-| Silver | `workspace.rewards_silver.*` |
-| Gold | `workspace.rewards_gold.daily_metrics` |
+## Repository layout
+
+    data/                         exercise CSVs
+    gold/sql/                     Gold business SQL
+    notebooks/                    thin Databricks drivers
+    scripts/                      profiling utility
+    src/databricks_pipeline/      reusable pipeline code
+    tests/                        local Spark tests
+    REPORT.md                     profiling evidence
+    SOLUTION.md                   decisions and trade-offs
+    databricks_pipeline_specification.md
 
 ## Local tests
 
-```bash
-cd pipeline
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-pytest
-```
+Use Python 3.11 and Java 17:
 
-See `SOLUTION.md` for architecture decisions and verification.
+    python3.11 -m venv .venv
+    source .venv/bin/activate
+    pip install -e ".[dev]"
+    pytest -q
+
+The tests run local Spark and execute the real Gold SQL against temporary views. No Databricks workspace is required.
+
+## Databricks setup
+
+Defaults target Free Edition-friendly Unity Catalog objects:
+
+    workspace.rewards_bronze.*
+    workspace.rewards_silver.*
+    workspace.rewards_gold.daily_metrics
+
+Run the notebooks in order:
+
+    01_bronze → 02_silver → 03_gold → 04_verify
+
+For the initial complete build, run Gold with full_refresh=true. Normal runs use a seven-day correction window.
+
+See SOLUTION.md for the data-quality decisions, late-arrival strategy, failure modes, and interview talking points.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from databricks_pipeline.quality import run_all_checks
+from databricks_pipeline.quality.checks import assert_no_key_conflicts
 from helpers import build_silver_events
 
 
@@ -80,3 +81,23 @@ def test_quality_checks_pass_on_clean_silver(spark):
     assert results["gold_logical_key_unique"].passed
     assert results["reward_cost_eur_non_negative"].passed
     assert results["replay_count"].value == 1
+
+
+def test_incremental_conflict_check_rejects_changed_existing_key(spark):
+    existing = spark.createDataFrame(
+        [{"offer_id": "of_1", "offer_category": "rpg", "payout_type": "cpe", "payout_eur": "2.00"}]
+    )
+    incoming = spark.createDataFrame(
+        [{"offer_id": "of_1", "offer_category": "rpg", "payout_type": "cpe", "payout_eur": "3.00"}]
+    )
+
+    import pytest
+
+    with pytest.raises(ValueError, match="conflicts"):
+        assert_no_key_conflicts(
+            incoming,
+            existing,
+            key="offer_id",
+            compare_columns=["offer_category", "payout_type", "payout_eur"],
+            label="offers",
+        )

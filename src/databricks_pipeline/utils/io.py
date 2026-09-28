@@ -26,14 +26,15 @@ def read_csv_with_schema(
         .load(path_str)
     )
     if add_ingestion_metadata:
-        df = df.withColumn("_ingested_at", F.current_timestamp()).withColumn(
-            "_source_file", F.lit(Path(path_str).name)
+        df = (
+            df.withColumn("_ingested_at", F.current_timestamp())
+            .withColumn("_source_file", F.input_file_name())
         )
     return df
 
 
 def write_delta_overwrite(df: DataFrame, table_name: str) -> None:
-    """Overwrite a Delta table idempotently (schema overwrite allowed)."""
+    """Overwrite a bounded exercise table idempotently."""
     (
         df.write.format("delta")
         .mode("overwrite")

@@ -93,7 +93,7 @@ A future payout change is another concern: if offer payout is mutable, historica
 
 ## Scale
 
-If the same shape arrives continuously from many sources, the layer boundaries, Delta tables, event-time semantics, quality contracts, and Unity Catalog governance survive. I would replace static batch file reads and a fixed lookback with continuous ingestion where justified, metadata-driven source configuration, ingestion watermarks, and affected-date recomputation.
+If the same shape arrives continuously from many sources, the layer boundaries, Delta tables, event-time semantics, Silver business-key MERGEs, quality contracts, and Unity Catalog governance survive. I would replace the bounded Bronze overwrite with append-only Auto Loader/streaming ingestion, make source configuration metadata-driven, persist an ingestion watermark, and derive the exact affected `event_date` values for Gold instead of relying on a fixed seven-day lookback.
 
 ## AI usage
 

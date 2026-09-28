@@ -49,11 +49,21 @@ def run_silver(spark: SparkSession, config: PipelineConfig) -> dict[str, int]:
     # These dimensions enrich events. Duplicates here would create silent join fan-out.
     assert_unique_key(silver_offers, "offer_id", "silver offers")
     assert_unique_key(silver_installs, "user_id", "silver installs")
+    assert_required_non_null(
+        silver_installs,
+        ["user_id", "install_ts", "install_date", "country", "platform"],
+        "silver installs",
+    )
 
     silver_events = transform_events(bronze_events, silver_installs, silver_offers)
     silver_profile = transform_user_profile(bronze_profile)
 
     assert_unique_key(silver_events, "event_id", "silver events")
+    assert_required_non_null(
+        silver_events,
+        ["event_id", "user_id", "event_ts", "ingest_ts", "event_date", "ingest_date"],
+        "silver events",
+    )
     assert_no_unresolved_rewards(silver_events)
 
     frames = {

@@ -12,6 +12,7 @@ from databricks_pipeline.config import PipelineConfig
 from databricks_pipeline.gold import load_gold_sql
 from databricks_pipeline.quality.checks import (
     assert_event_replay_shape,
+    assert_no_key_conflicts,
     assert_no_unresolved_rewards,
     assert_required_non_null,
     assert_unique_key,
@@ -22,14 +23,60 @@ from databricks_pipeline.silver import (
     transform_offers,
     transform_user_profile,
 )
-from databricks_pipeline.utils import ensure_schemas, write_delta_overwrite
+from databricks_pipeline.utils import (
+    ensure_schemas,
+    merge_delta,
+    table_exists,
+    write_delta_overwrite,
+)
 
 
-def run_silver(spark: SparkSession, config: PipelineConfig) -> dict[str, int]:
-    """Transform Bronze → Silver and overwrite the bounded exercise tables.
+def _write_reference_table(
+    spark: SparkSession,
+    incoming: DataFrame,
+    target_table: str,
+    *,
+    key: str,
+    immutable_columns: list[str],
+    label: str,
+    full_refresh: bool,
+) -> None:
+    """Write an immutable reference micro-batch without silently changing history."""
+    assert_unique_key(incoming, key, label)
 
-    The input is a bounded extract, so a full Silver rebuild is deliberate here.
-    Gold is where process-date incremental correction is applied.
+    if full_refresh or not table_exists(spark, target_table):
+        write_delta_overwrite(incoming, target_table)
+        return
+
+    existing = spark.table(target_table)
+    assert_unique_key(existing, key, f"existing {label}")
+    assert_no_key_conflicts(
+        incoming,
+        existing,
+        key=key,
+        compare_columns=immutable_columns,
+        label=label,
+    )
+    merge_delta(
+        spark,
+        incoming,
+        target_table,
+        key_columns=[key],
+        update_matched=False,
+    )
+
+
+def run_silver(
+    spark: SparkSession,
+    config: PipelineConfig,
+    *,
+    full_refresh: bool = False,
+) -> dict[str, int]:
+    """Transform the current Bronze batch and merge it into Silver.
+
+    Initial loads can use full_refresh=True. Normal runs only process the rows
+    present in the current Bronze landing batch and merge them into existing
+    Silver tables, so a single-day load does not rebuild full history.
     """
     bronze_installs = spark.table(config.bronze_installs)
     bronze_events = spark.table(config.bronze_events)
@@ -43,40 +90,102 @@ def run_silver(spark: SparkSession, config: PipelineConfig) -> dict[str, int]:
     )
     assert_event_replay_shape(bronze_events)
 
-    silver_offers = transform_offers(bronze_offers)
-    silver_installs = transform_installs(bronze_installs)
+    incoming_offers = transform_offers(bronze_offers)
+    incoming_installs = transform_installs(bronze_installs)
+    incoming_profile = transform_user_profile(bronze_profile)
 
-    # These dimensions enrich events. Duplicates here would create silent join fan-out.
-    assert_unique_key(silver_offers, "offer_id", "silver offers")
-    assert_unique_key(silver_installs, "user_id", "silver installs")
     assert_required_non_null(
-        silver_installs,
+        incoming_installs,
         ["user_id", "install_ts", "install_date", "country", "platform"],
-        "silver installs",
+        "silver installs batch",
     )
 
-    silver_events = transform_events(bronze_events, silver_installs, silver_offers)
-    silver_profile = transform_user_profile(bronze_profile)
+    # Installs and offers are treated as immutable reference data for this exercise.
+    # Conflicting repeats fail instead of silently rewriting historical meaning.
+    _write_reference_table(
+        spark,
+        incoming_offers,
+        config.silver_offers,
+        key="offer_id",
+        immutable_columns=["offer_category", "payout_type", "payout_eur"],
+        label="silver offers",
+        full_refresh=full_refresh,
+    )
+    _write_reference_table(
+        spark,
+        incoming_installs,
+        config.silver_installs,
+        key="user_id",
+        immutable_columns=[
+            "install_ts",
+            "country",
+            "platform",
+            "media_source",
+            "device_model",
+            "campaign_id",
+        ],
+        label="silver installs",
+        full_refresh=full_refresh,
+    )
 
-    assert_unique_key(silver_events, "event_id", "silver events")
+    # Enrich the event micro-batch against the complete current dimensions so an
+    # event arriving today can belong to a user or offer first seen earlier.
+    silver_installs_all = spark.table(config.silver_installs)
+    silver_offers_all = spark.table(config.silver_offers)
+    incoming_events = transform_events(
+        bronze_events,
+        silver_installs_all,
+        silver_offers_all,
+    )
+
+    assert_unique_key(incoming_events, "event_id", "silver events batch")
     assert_required_non_null(
-        silver_events,
+        incoming_events,
         ["event_id", "user_id", "event_ts", "ingest_ts", "event_date", "ingest_date"],
-        "silver events",
+        "silver events batch",
     )
-    assert_no_unresolved_rewards(silver_events)
+    assert_no_unresolved_rewards(incoming_events)
 
-    frames = {
-        config.silver_offers: silver_offers,
-        config.silver_installs: silver_installs,
-        config.silver_events: silver_events,
-        config.silver_user_profile: silver_profile,
+    if full_refresh or not table_exists(spark, config.silver_events):
+        write_delta_overwrite(incoming_events, config.silver_events)
+    else:
+        existing_events = spark.table(config.silver_events)
+        assert_unique_key(existing_events, "event_id", "existing silver events")
+        assert_no_key_conflicts(
+            incoming_events,
+            existing_events,
+            key="event_id",
+            compare_columns=["user_id", "event_ts", "event_name", "offer_id"],
+            label="silver events",
+        )
+        merge_delta(
+            spark,
+            incoming_events,
+            config.silver_events,
+            key_columns=["event_id"],
+            update_matched=True,
+            matched_condition="s.ingest_ts < t.ingest_ts",
+        )
+
+    # user_profile is a mutable backend snapshot and is not used to derive Gold.
+    assert_unique_key(incoming_profile, "user_id", "silver user_profile batch")
+    if full_refresh or not table_exists(spark, config.silver_user_profile):
+        write_delta_overwrite(incoming_profile, config.silver_user_profile)
+    else:
+        merge_delta(
+            spark,
+            incoming_profile,
+            config.silver_user_profile,
+            key_columns=["user_id"],
+            update_matched=True,
+        )
+
+    return {
+        config.silver_offers: incoming_offers.count(),
+        config.silver_installs: incoming_installs.count(),
+        config.silver_events: incoming_events.count(),
+        config.silver_user_profile: incoming_profile.count(),
     }
-    counts: dict[str, int] = {}
-    for table_name, df in frames.items():
-        write_delta_overwrite(df, table_name)
-        counts[table_name] = df.count()
-    return counts
 
 
 def ensure_gold_table(spark: SparkSession, config: PipelineConfig) -> None:
@@ -117,7 +226,6 @@ def run_gold(
     else:
         start_date, end_date = config.correction_window(process_date)
 
-    # The SQL creates the temp view gold_daily_metrics_updates.
     spark.sql(load_gold_sql(config, start_date, end_date))
     updates = spark.table("gold_daily_metrics_updates")
 
@@ -147,7 +255,7 @@ def run_pipeline(
     """Run Bronze → Silver → Gold end to end."""
     ensure_schemas(spark, config)
     bronze_counts = run_bronze(spark, config)
-    silver_counts = run_silver(spark, config)
+    silver_counts = run_silver(spark, config, full_refresh=full_refresh)
     gold_df = run_gold(spark, config, process_date, full_refresh=full_refresh)
     return {
         "bronze_counts": bronze_counts,

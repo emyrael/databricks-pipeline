@@ -8,7 +8,7 @@ Import submodules directly when you need a specific helper, e.g.::
 
 from databricks_pipeline.utils.bootstrap import ensure_package_on_path
 from databricks_pipeline.utils.dates import correction_window, parse_process_date
-from databricks_pipeline.utils.io import read_csv_with_schema, write_delta_overwrite
+from databricks_pipeline.utils.io import (\n    merge_delta,\n    read_csv_with_schema,\n    table_exists,\n    write_delta_overwrite,\n)
 from databricks_pipeline.utils.paths import resolve_source_csv
 from databricks_pipeline.utils.sql_templates import render_sql_template
 

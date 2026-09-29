@@ -31,3 +31,10 @@ htmlcov/
 # Local environment files
 .env
 .env.*
+
+# Local source data (use UC Volumes in Databricks)
+data/
+
+# Markdown docs except README
+*.md
+!README.md

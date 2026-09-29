@@ -1,56 +1,74 @@
 # Databricks Rewards Pipeline
 
-Interview-focused Databricks pipeline for a rewarded-offer dataset.
+Medallion-style Databricks pipeline for a rewarded-offer dataset. It lands CSV sources into Unity Catalog, builds trustworthy Silver tables, and publishes daily Gold metrics by country and platform.
 
-Architecture:
+## Architecture
 
-    CSV landing files
-          ↓
-    Bronze Delta        PySpark, raw source values
-          ↓
-    Silver Delta        PySpark, incremental MERGE + normalization + dedupe + quality flags
-          ↓
-    Gold daily metrics  SQL, business-readable aggregates
-          ↓
-    Verification        PySpark quality checks + reconciliation
+```text
+CSV landing files
+      ↓
+Bronze Delta        PySpark — raw source values preserved
+      ↓
+Silver Delta        PySpark — typing, normalization, event dedupe, quality flags
+      ↓
+Gold daily metrics  SQL — installs and event aggregates by day × country × platform
+      ↓
+Verification        quality checks and reconciliation totals
+```
 
-The repo deliberately avoids streaming, Auto Loader, DLT/Lakeflow Declarative Pipelines, and physical partitioning for a dataset this small. The interesting problems here are correctness: replayed events, late arrival, ambiguous records, join fan-out, and idempotent reruns.
+Gold grain: `metric_date × country × platform`
+
+Metrics include installs, unique users per event type, reward payouts, and reward cost in EUR.
+
+Design choices for this dataset size:
+
+- batch CSV reads (not Auto Loader / streaming)
+- PySpark for Bronze and Silver
+- SQL for Gold
+- Jobs-style notebook orchestration (not DLT / Lakeflow Declarative Pipelines)
+- no physical partitioning of small tables
+
+The pipeline handles replayed events, late arrivals via a correction window, and idempotent reruns.
 
 ## Repository layout
 
-    data/                         exercise CSVs
-    gold/sql/                     Gold business SQL
-    notebooks/                    thin Databricks drivers
-    scripts/                      profiling utility
-    src/databricks_pipeline/      reusable pipeline code
-    tests/                        local Spark tests
-    REPORT.md                     profiling evidence
-    SOLUTION.md                   decisions and trade-offs
-    databricks_pipeline_specification.md
+```text
+gold/sql/                 Gold business SQL
+notebooks/                thin Databricks drivers
+scripts/                  profiling utility
+src/databricks_pipeline/  reusable pipeline code
+tests/                    local Spark tests
+```
+
+Source CSVs are expected in Unity Catalog Volumes in Databricks (for example `workspace.rewards.landing`). Keep a local `data/` folder for offline use if needed — it is not tracked in git.
 
 ## Local tests
 
-Use Python 3.11 and Java 17:
+Python 3.11+ and Java 17:
 
-    python3.11 -m venv .venv
-    source .venv/bin/activate
-    pip install -e ".[dev]"
-    pytest -q
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+pytest -q
+```
 
-The tests run local Spark and execute the real Gold SQL against temporary views. No Databricks workspace is required.
+Tests run local Spark and execute the real Gold SQL against temporary views. A Databricks workspace is not required.
 
 ## Databricks setup
 
-Defaults target Free Edition-friendly Unity Catalog objects:
+Default Unity Catalog targets:
 
-    workspace.rewards_bronze.*
-    workspace.rewards_silver.*
-    workspace.rewards_gold.daily_metrics
+```text
+workspace.rewards_bronze.*
+workspace.rewards_silver.*
+workspace.rewards_gold.daily_metrics
+```
 
-Run the notebooks in order:
+Run notebooks in order:
 
-    01_bronze → 02_silver → 03_gold → 04_verify
+```text
+01_bronze → 02_silver → 03_gold → 04_verify
+```
 
-For the initial complete build, run Silver and Gold with full_refresh=true. Normal Silver runs MERGE only the current Bronze batch into accumulated Silver tables; Gold replaces its seven-day correction window.
-
-See SOLUTION.md for the data-quality decisions, late-arrival strategy, failure modes, and interview talking points.
+For an initial full build, run Silver and Gold with `full_refresh=true`. Normal Silver runs MERGE the current Bronze batch into Silver; Gold replaces its seven-day correction window.

@@ -38,3 +38,5 @@ data/
 # Markdown docs except README
 *.md
 !README.md
+!SOLUTION.md
+!REPORT.md

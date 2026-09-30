@@ -11,7 +11,7 @@ dbutils.widgets.text("silver_schema", "rewards_silver")
 dbutils.widgets.text("gold_schema", "rewards_gold")
 dbutils.widgets.text(
     "repo_src",
-    "/Workspace/Users/emyraeleson@gmail.com/databricks-pipeline_flow/src",
+    "/Workspace/Users/<your-email>/databricks-pipeline/src",
 )
 
 # COMMAND ----------

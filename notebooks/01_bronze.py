@@ -20,8 +20,13 @@ dbutils.widgets.text("data_dir", "/Volumes/workspace/rewards/landing")
 dbutils.widgets.text("load_date", "2026-09-28")
 dbutils.widgets.text(
     "repo_src",
-    "/Workspace/Users/<your-email>/databricks-pipeline/src",
+    "/Workspace/Users/emyraeleson@gmail.com/databricks-pipeline_flow/src",
 )
+
+# COMMAND ----------
+
+# DBTITLE 1,Install dependencies
+# MAGIC %pip install -r /Workspace/Users/emyraeleson@gmail.com/databricks-pipeline_flow/scripts/requirements.txt
 
 # COMMAND ----------
 

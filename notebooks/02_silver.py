@@ -16,8 +16,13 @@ dbutils.widgets.text("silver_schema", "rewards_silver")
 dbutils.widgets.text("full_refresh", "false")
 dbutils.widgets.text(
     "repo_src",
-    "/Workspace/Users/<your-email>/databricks-pipeline/src",
+    "/Workspace/Users/emyraeleson@gmail.com/databricks-pipeline_flow/src",
 )
+
+# COMMAND ----------
+
+# DBTITLE 1,Install dependencies
+# MAGIC %pip install -r /Workspace/Users/emyraeleson@gmail.com/databricks-pipeline_flow/scripts/requirements.txt
 
 # COMMAND ----------
 

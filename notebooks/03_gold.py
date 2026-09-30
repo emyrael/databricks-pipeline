@@ -17,7 +17,7 @@ dbutils.widgets.text("process_date", "2026-05-27")
 dbutils.widgets.text("full_refresh", "false")
 dbutils.widgets.text(
     "repo_src",
-    "/Workspace/Users/emyraeleson@gmail.com/databricks-pipeline_flow/src",
+    "/Workspace/Users/<your-email>/databricks-pipeline/src",
 )
 
 # COMMAND ----------
